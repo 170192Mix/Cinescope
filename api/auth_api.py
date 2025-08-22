@@ -1,36 +1,30 @@
-from constants import REGISTER_ENDPOINT, LOGIN_ENDPOINT
+from constants import CINESCOPE_AUTH_BASE_URL, REGISTER_ENDPOINT, LOGIN_ENDPOINT
 from custom_requester.custom_requester import CustomRequester
+
 
 class AuthAPI(CustomRequester):
     """
-    Класс для работы с аутентификацией.
+    Класс для работы с аутентификацией Cinescope.
     """
 
     def __init__(self, session):
-        super().__init__(session=session, base_url="https://auth.dev-cinescope.store")
+        # важно: берём базовый URL из constants
+        super().__init__(session=session, base_url=CINESCOPE_AUTH_BASE_URL)
 
     def register_user(self, user_data, expected_status=201):
-        """
-        Регистрация нового пользователя.
-        :param user_data: Данные пользователя.
-        :param expected_status: Ожидаемый статус-код.
-        """
+        # сервер отвечает 201 на успешную регистрацию
         return self.send_request(
-            method="POST",
-            endpoint=REGISTER_ENDPOINT,
+            "POST",
+            REGISTER_ENDPOINT,
             data=user_data,
             expected_status=expected_status
         )
 
-    def login_user(self, login_data, expected_status=201):
-        """
-        Авторизация пользователя.
-        :param login_data: Данные для логина.
-        :param expected_status: Ожидаемый статус-код.
-        """
+    def login_user(self, login_data, expected_status=200):
+        # логин возвращает 200
         return self.send_request(
-            method="POST",
-            endpoint=LOGIN_ENDPOINT,
+            "POST",
+            LOGIN_ENDPOINT,
             data=login_data,
             expected_status=expected_status
         )

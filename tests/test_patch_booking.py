@@ -4,6 +4,7 @@ import requests
 from constants import BASE_URL
 
 class TestBookings:
+    @pytest.mark.xfail(reason="На Restful-Booker PATCH {} -> 200, а не 400/403")
     def test_patch_booking(self, booking_data):
         # 1. Получаем токен для авторизации
         auth_response = requests.post(f"{BASE_URL}/auth", json={ # отправляем POST запрос

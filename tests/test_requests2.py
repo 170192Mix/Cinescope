@@ -7,7 +7,10 @@ url = "https://httpbin.org/status/204" # Пустой ответ
 response = requests.get(url)
 
 # Без try/except - напрямую вызываем json()
-data = response.json() # Здесь произойдет ошибка
+try:
+    data = response.json()
+except ValueError:
+    data = response.text
 
 print("JSON:", data)
 

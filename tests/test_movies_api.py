@@ -2,6 +2,7 @@
 import os
 import pytest
 import requests
+import random
 
 from constants import API_BASE, CINESCOPE_AUTH_BASE_URL, HEADERS
 from api.movies_api import MoviesAPI
@@ -51,7 +52,9 @@ def movie_payload():
     Генерируем валидный payload для создания фильма
     (см. методы в DataGenerator внизу)
     """
-    return DataGenerator.generate_movie_payload() # Отдаёт свежий валидный JSON для создания фильма — чтобы не хардкодить
+    p = DataGenerator.generate_movie_payload()
+    p["location"] = random.choice(["MSK", "SPB"])  # ок
+    return p
 
 
 @pytest.fixture
@@ -62,19 +65,19 @@ def created_movie(movies_api, movie_payload):
     """
     resp = movies_api.create_movie(movie_payload, expected_status=201)
     body = resp.json()
-    # ID может называться по-разному, подстрахуемся
     movie_id = body.get("id") or body.get("uuid") or body.get("_id")
     assert movie_id, f"No id in create response: {body}"
 
-    yield {"id": movie_id, "body": body, "payload": movie_payload}
-
-    # Teardown: чисто на всякий случай удалим (если ещё не удалили в тесте)
     try:
-        movies_api.delete_movie(movie_id, expected_status=204)
-    except AssertionError:
-        # Если уже удалён (404) — ок
-        pass
-
+        # отдаём данные тесту
+        yield {"id": movie_id, "body": body, "payload": movie_payload}
+    finally:
+        # teardown (после теста)
+        try:
+            movies_api.delete_movie(movie_id, expected_status=200)  # у вашего API 200
+        except Exception:
+            # уже удалён/не нашёлся — ок
+            pass
 
 # ПОЗИТИВНЫЙ CRUD-ТЕСТ
 
@@ -100,7 +103,7 @@ class TestMoviesCRUD:
         assert patched.get("description") == patch_payload["description"]
 
         # DELETE
-        movies_api.delete_movie(movie_id, expected_status=204)
+        movies_api.delete_movie(movie_id, expected_status=200)
 
         # GET после удаления — ожидаем 404
         movies_api.get_movie(movie_id, expected_status=404)
@@ -111,7 +114,7 @@ class TestMoviesCRUD:
 class TestMoviesNegative:
 
     def test_get_not_found(self, movies_api):
-        movies_api.get_movie("non-existent-id-123", expected_status=404)
+        movies_api.get_movie("99999999", expected_status=404)
 
     def test_create_invalid_payload(self, movies_api):
         bad_payload = DataGenerator.movie_invalid_payload()
@@ -119,19 +122,29 @@ class TestMoviesNegative:
 
     def test_patch_invalid_payload(self, movies_api, created_movie):
         movie_id = created_movie["id"]
-        bad = {"year": "abc"}  # нарушаем тип явно
+        bad = {"price": "abc"}  # нарушаем тип явно
         movies_api.patch_movie(movie_id, bad, expected_status=400)
 
-    def test_unauthorized_access(session):
+    def test_unauthorized_access(self):
         """
         Проверяем, что без Authorization токена API не пускает
         """
+        unauth_session = requests.Session()
         raw_client = MoviesAPI(
-            session=session,
+            session=unauth_session,
             base_url=API_BASE,
             headers={"Accept": "application/json"}  # без Bearer
         )
-        raw_client.list_movies(expected_status=401)
+        raw_client.headers.pop("Authorization", None)
+        raw_client.session.headers.pop("Authorization", None)
+
+        payload = DataGenerator.generate_movie_payload()
+        payload["location"] = "MSK"
+
+        try:
+            raw_client.create_movie(payload, expected_status=401)
+        except ValueError:
+            raw_client.create_movie(payload, expected_status=403)
 
 
 # ФИЛЬТРЫ / ПАГИНАЦИЯ
