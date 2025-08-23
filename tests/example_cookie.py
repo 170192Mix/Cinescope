@@ -1,5 +1,4 @@
 # Задание 1
-from pydoc import browse
 
 import requests
 

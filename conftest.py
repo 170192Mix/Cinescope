@@ -14,7 +14,6 @@ from constants import (
     BASE_URL,
     CINESCOPE_AUTH_BASE_URL,
     REGISTER_ENDPOINT,
-    LOGIN_ENDPOINT,
     HEADERS,
 )
 
@@ -37,7 +36,6 @@ def session():
 @pytest.fixture(scope="session")
 def cinescope(session):
     """Кастомный реквестер для Cinescope auth."""
-    from constants import CINESCOPE_AUTH_BASE_URL, HEADERS
     from custom_requester.custom_requester import CustomRequester
 
     r = CustomRequester(session=session, base_url=CINESCOPE_AUTH_BASE_URL)
@@ -105,7 +103,7 @@ def registered_user(cinescope, test_user):
         resp = cinescope.post(REGISTER_ENDPOINT, json=test_user, expected_status=201)
         data = resp.json()
         user = {**test_user, "id": data.get("id")}
-    except ValueError as e:
+    except ValueError:
         resp = cinescope.post(REGISTER_ENDPOINT, json=test_user, expected_status=409)
         user = {**test_user, "id": None}
     return user

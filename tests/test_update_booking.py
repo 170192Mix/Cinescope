@@ -1,5 +1,4 @@
 # 1. Покрытие метода PUT
-import pytest
 import requests
 from constants import BASE_URL
 
