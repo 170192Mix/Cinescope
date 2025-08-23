@@ -31,7 +31,7 @@ class DataGenerator: # Данный класс используется для �
     @staticmethod
     def generate_movie_payload() -> object:
         """
-        Валидный payload под контракт /movies.
+        Валидный payload под контракт /movies
         """
         return { # Формируем словарь для API
             "name": faker.sentence(nb_words=3), # случайное название фильма (3 слова)

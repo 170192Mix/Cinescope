@@ -35,22 +35,22 @@ def session():
 
 @pytest.fixture(scope="session")
 def cinescope(session):
-    """Кастомный реквестер для Cinescope auth."""
+    """Кастомный реквестер для Cinescope auth"""
     from custom_requester.custom_requester import CustomRequester
 
     r = CustomRequester(session=session, base_url=CINESCOPE_AUTH_BASE_URL)
     r.update_headers(**HEADERS)
-    session.verify = False  # у вас self-signed HTTPS на dev, чтобы не ловить SSL
+    session.verify = False
     return r
 
 @pytest.fixture(scope="session")
 def api_manager(session):
-    """Единая точка входа для API-слоя (использует внутри ту же session)."""
+    """Единая точка входа для API-слоя (использует внутри ту же session)"""
     return ApiManager(session)
 
 @pytest.fixture(scope="session")
 def booker(session):
-    """Кастомный реквестер на Restful Booker с базовым URL = BASE_URL."""
+    """Кастомный реквестер на Restful Booker с базовым URL = BASE_URL"""
     r = CustomRequester(session=session, base_url=BASE_URL)
     return r
 
@@ -58,7 +58,7 @@ def booker(session):
 def auth_session(booker):
     """
     Возвращаем requests.Session с установленным Cookie токена Booker.
-    Так тесты могут делать auth_session.post(f"{BASE_URL}/booking", ...).
+    Так тесты могут делать auth_session.post(f"{BASE_URL}/booking", ...)
     """
     from constants import AUTH_ENDPOINT
 
