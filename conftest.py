@@ -6,8 +6,9 @@ import requests
 from faker import Faker
 
 # пусть проектный корень был виден для импортов
-ROOT = os.path.abspath(os.path.dirname(__file__))
-sys.path.insert(0, ROOT)
+PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 # наши константы
 from constants import (
@@ -17,8 +18,8 @@ from constants import (
     HEADERS,
 )
 
-# API менеджер + наш удобный реквестер
-from api.api_manager import ApiManager
+# API менеджер
+from tests.test_api.api_manager import ApiManager
 from custom_requester.custom_requester import CustomRequester
 from utils.data_generator import DataGenerator
 
@@ -35,8 +36,6 @@ def session():
 
 @pytest.fixture(scope="session")
 def cinescope(session):
-    """Кастомный реквестер для Cinescope auth"""
-    from custom_requester.custom_requester import CustomRequester
 
     r = CustomRequester(session=session, base_url=CINESCOPE_AUTH_BASE_URL)
     r.update_headers(**HEADERS)
@@ -97,18 +96,40 @@ def test_user():
 @pytest.fixture(scope="session")
 def registered_user(cinescope, test_user):
     """
-    Регистрирует пользователя в Cinescope и возвращает dict с id.
+    Регистрирует пользователя в Cinescope и возвращает dict с данными для логина.
+    Если пользователь уже есть (409), просто возвращает его данные без повторного вызова.
     """
-    try:
-        resp = cinescope.post(REGISTER_ENDPOINT, json=test_user, expected_status=201)
-        data = resp.json()
-        user = {**test_user, "id": data.get("id")}
-    except ValueError:
-        resp = cinescope.post(REGISTER_ENDPOINT, json=test_user, expected_status=409)
-        user = {**test_user, "id": None}
-    return user
+    resp = cinescope.post(REGISTER_ENDPOINT, json=test_user, expected_status=(201, 409))
+
+    data = resp.json()
+    return {
+        "email": test_user["email"],
+        "password": test_user["password"],
+        "id": data.get("id") if resp.status_code == 201 else None
+    }
 
 @pytest.fixture(scope="session")
 def requester(session):
     """Если где-то нужны просто вызовы относительно BASE_URL (Restful Booker)."""
     return CustomRequester(session=session, base_url=BASE_URL, headers={"Content-Type": "application/json"})
+
+
+@pytest.fixture(scope="session")
+def admin_api(api_manager):
+    """
+    Возвращает ApiManager с уже установленным Bearer токеном для админа.
+    """
+    # Вызов логина через auth API, чтобы получить токен
+    resp = api_manager.auth.login(
+        email="api1@gmail.com",
+        password="asdqwe123Q",
+        expected_status=200
+    )
+
+    token = resp.json().get("accessToken") or resp.json().get("token")
+    if not token:
+        raise RuntimeError("Не удалось получить токен администратора")
+
+    # Устанавливаем токен в заголовки всех запросов
+    api_manager.set_bearer(token)
+    return api_manager

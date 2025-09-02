@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from collections.abc import Iterable
 
 class CustomRequester:
     """
@@ -43,38 +44,44 @@ class CustomRequester:
         return self.send_request("DELETE", endpoint, expected_status=expected_status, **kwargs)
 
     # ——— Базовый универсальный метод ———
-    def send_request(self, method, endpoint, data=None, expected_status=200, need_logging=True, params=None, headers=None, json=None):
-        """
-        endpoint может быть либо абсолютным URL, либо относительным ("/booking").
-        Если передаёшь 'json' — он имеет приоритет над 'data'.
-        """
+    def send_request(
+            self, method, endpoint, data=None, expected_status=200,
+            need_logging=True, params=None, headers=None, json=None,
+            files=None, prefer_json=False  # ← новое: по умолчанию НЕ переводим в json
+    ):
         url = endpoint if endpoint.startswith("http") else f"{self.base_url}{endpoint}"
-        # если явно передали headers — не теряем базовые
         req_headers = {**self.headers, **(headers or {})}
 
-        # Если не передан json, а передан data — решаем, что это JSON-тело
-        # (в тестах удобнее всегда отправлять через json=payload)
-        if json is None and data is not None:
-            json = data
-            data = None
+        # Если явно попросили json или Content-Type уже json — завернём data в json
+        ct = req_headers.get("Content-Type", "").lower()
+        if json is None and data is not None and (prefer_json or "application/json" in ct):
+            json, data = data, None
 
         response = self.session.request(
             method=method,
             url=url,
             headers=req_headers,
             params=params,
-            json=json,
+            json=json, # уйдёт как JSON
             data=data,
+            files=files
         )
 
         if need_logging:
             self._log_request_and_response(response)
 
-        if response.status_code != expected_status:
-            raise ValueError(f"Unexpected status code: {response.status_code}. Expected: {expected_status}")
+        def _ok(status, expected):
+            # expected может быть числом или коллекцией (list/tuple/set)
+            if isinstance(expected, Iterable) and not isinstance(expected, (str, bytes)):
+                return status in expected
+            return status == expected
+
+        if not _ok(response.status_code, expected_status):
+            raise AssertionError(
+                f"{method} {url} -> {response.status_code}, ожидалось {expected_status}"
+            )
 
         return response
-
     def update_headers(self, **kwargs):
         """Обновить хедеры как на объекте, так и в сессии (например, добавить Authorization)."""
         self.headers.update(kwargs)
