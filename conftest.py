@@ -19,7 +19,7 @@ from constants import (
 )
 
 # API менеджер
-from tests.test_api.api_manager import ApiManager
+from api.api_manager import ApiManager
 from custom_requester.custom_requester import CustomRequester
 from utils.data_generator import DataGenerator
 
@@ -61,7 +61,7 @@ def auth_session(booker):
     """
     from constants import AUTH_ENDPOINT
 
-    resp = booker.post(AUTH_ENDPOINT, data={"username": "admin", "password": "password123"}, expected_status=200)
+    resp = booker.post(AUTH_ENDPOINT, json={"username": "admin", "password": "password123"}, expected_status=200)
     token = resp.json()["token"]
 
     s = requests.Session()

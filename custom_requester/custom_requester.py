@@ -1,22 +1,19 @@
+
 import json
 import logging
 import os
 from collections.abc import Iterable
 
 class CustomRequester:
-    """
-    Универсальный HTTP-клиент поверх requests.Session с логированием.
-    Ожидает, что session уже создана снаружи (фикстурой).
-    """
     base_headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
 
-    def __init__(self, session, base_url, headers=None):  # добавил headers
+    def __init__(self, session, base_url, headers=None):
         self.session = session
         self.base_url = base_url.rstrip("/")
-        self.headers = {**self.base_headers, **(headers or {})}  # ← объединили
+        self.headers = {**self.base_headers, **(headers or {})}
         self.session.headers.update(self.headers)
 
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
@@ -26,12 +23,11 @@ class CustomRequester:
             _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
             self.logger.addHandler(_h)
 
-    # ——— Удобные методы ———
+    # Удобные методы
     def get(self, endpoint, expected_status=200, params=None, **kwargs):
         return self.send_request("GET", endpoint, expected_status=expected_status, params=params, **kwargs)
 
     def post(self, endpoint, data=None, expected_status=200, **kwargs):
-        # если передаёшь JSON, используй json=data
         return self.send_request("POST", endpoint, data=data, expected_status=expected_status, **kwargs)
 
     def put(self, endpoint, data=None, expected_status=200, **kwargs):
@@ -43,35 +39,29 @@ class CustomRequester:
     def delete(self, endpoint, expected_status=200, **kwargs):
         return self.send_request("DELETE", endpoint, expected_status=expected_status, **kwargs)
 
-    # ——— Базовый универсальный метод ———
     def send_request(
-            self, method, endpoint, data=None, expected_status=200,
-            need_logging=True, params=None, headers=None, json=None,
-            files=None, prefer_json=False  # ← новое: по умолчанию НЕ переводим в json
+        self, method, endpoint, data=None, expected_status=200,
+        need_logging=True, params=None, headers=None, json=None,
+        files=None
     ):
         url = endpoint if endpoint.startswith("http") else f"{self.base_url}{endpoint}"
         req_headers = {**self.headers, **(headers or {})}
-
-        # Если явно попросили json или Content-Type уже json — завернём data в json
-        ct = req_headers.get("Content-Type", "").lower()
-        if json is None and data is not None and (prefer_json or "application/json" in ct):
-            json, data = data, None
 
         response = self.session.request(
             method=method,
             url=url,
             headers=req_headers,
             params=params,
-            json=json, # уйдёт как JSON
-            data=data,
+            json=json,   # JSON — явно через json=
+            data=data,   # form/bytes — через data=
             files=files
         )
 
         if need_logging:
             self._log_request_and_response(response)
 
+        # проверка ожидаемого статуса должна выполняться
         def _ok(status, expected):
-            # expected может быть числом или коллекцией (list/tuple/set)
             if isinstance(expected, Iterable) and not isinstance(expected, (str, bytes)):
                 return status in expected
             return status == expected
@@ -82,12 +72,11 @@ class CustomRequester:
             )
 
         return response
+
     def update_headers(self, **kwargs):
-        """Обновить хедеры как на объекте, так и в сессии (например, добавить Authorization)."""
         self.headers.update(kwargs)
         self.session.headers.update(self.headers)
 
-    # ——— Логирование ———
     def _log_request_and_response(self, response):
         if not hasattr(self, "logger"):
             self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
@@ -114,7 +103,6 @@ class CustomRequester:
                 f"{body}"
             )
 
-            # красивый вывод JSON-ответа, если это JSON
             resp_text = response.text
             try:
                 resp_text = json.dumps(response.json(), indent=4, ensure_ascii=False)

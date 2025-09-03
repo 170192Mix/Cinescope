@@ -3,7 +3,7 @@ import requests
 from typing import Optional
 
 from constants import API_BASE, HEADERS
-from tests.test_api.api_movies import MoviesAPI
+from api.api_movies import MoviesAPI
 from api.auth_api import AuthAPI
 from api.user_api import UserAPI
 

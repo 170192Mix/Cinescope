@@ -17,7 +17,7 @@ class AuthAPI(CustomRequester): # Специализированный клие�
         return self.send_request(
             "POST",
             REGISTER_ENDPOINT,
-            data=user_data,
+            json=user_data,
             expected_status=expected_status
         )
 
@@ -26,7 +26,7 @@ class AuthAPI(CustomRequester): # Специализированный клие�
         return self.send_request(
             "POST",
             LOGIN_ENDPOINT,
-            data=login_data,
+            json=login_data,
             expected_status=expected_status
         )
 
