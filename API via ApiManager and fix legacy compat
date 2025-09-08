@@ -1,0 +1,158 @@
+[1mdiff --git a/api/api_manager.py b/api/api_manager.py[m
+[1mindex 3882ef1..8dd930c 100644[m
+[1m--- a/api/api_manager.py[m
+[1m+++ b/api/api_manager.py[m
+[36m@@ -1,4 +1,3 @@[m
+[31m-[m
+ import requests[m
+ from typing import Optional[m
+ [m
+[36m@@ -7,44 +6,33 @@[m [mfrom api.api_movies import MoviesAPI[m
+ from api.auth_api import AuthAPI[m
+ from api.user_api import UserAPI[m
+ [m
+[32m+[m
+ class ApiManager:[m
+     """[m
+     Единая точка доступа к API-клиентам на общей requests.Session()[m
+     """[m
+     def __init__(self, session: Optional[requests.Session] = None):[m
+         self.session = session or requests.Session()[m
+[31m-        # Базовые заголовки на всю сессию[m
+         self.session.headers.update(HEADERS)[m
+ [m
+[31m-        self.auth = AuthAPI(self.session)[m
+[31m-        self.auth_api = self.auth[m
+[31m-        self.user = UserAPI(self.session)[m
+[31m-[m
+[31m-        @property[m
+[31m-        def auth_api(self):[m
+[31m-            return self.auth[m
+[31m-[m
+[31m-        @property[m
+[31m-        def movies_api(self):[m
+[31m-            return self.movies[m
+[32m+[m[32m        self.auth_api = AuthAPI(self.session)[m
+[32m+[m[32m        self.user_api = UserAPI(self.session)[m
+ [m
+     @property[m
+[31m-    def movies(self) -> MoviesAPI:[m
+[31m-        # Если MoviesAPI умеет работать только с session[m
+[31m-        # Если ему нужен base_url/headers — передаём (как у тебя сейчас)[m
+[32m+[m[32m    def movies_api(self) -> MoviesAPI:[m
+         return MoviesAPI(session=self.session, base_url=API_BASE, headers=HEADERS)[m
+ [m
+[31m-    # Удобный хелпер: логин и установка токена в общий session[m
+     def set_bearer(self, token: str) -> None:[m
+         self.session.headers["Authorization"] = f"Bearer {token}"[m
+ [m
+     def login_admin(self, email: str, password: str) -> str:[m
+         """[m
+[31m-        Авторизует и сразу ставит токен в сессию.[m
+[32m+[m[32m        Авторизует и сразу ставит токен в сессию[m
+         Возвращает сам токен[m
+         """[m
+[31m-        resp = self.auth.login(email=email, password=password, expected_status=200)  # подгони под свой AuthAPI[m
+[32m+[m[32m        resp = self.auth_api.login(email=email, password=password, expected_status=200)[m
+         token = resp.json().get("accessToken") or resp.json().get("token")[m
+         if not token:[m
+             raise RuntimeError("Не получили токен от auth-сервиса")[m
+         self.set_bearer(token)[m
+[32m+[m[32m        return token[m
+\ No newline at end of file[m
+[1mdiff --git a/api/api_movies.py b/api/api_movies.py[m
+[1mindex 43e5827..a9cfb18 100644[m
+[1m--- a/api/api_movies.py[m
+[1m+++ b/api/api_movies.py[m
+[36m@@ -1,58 +1,36 @@[m
+ [m
+[32m+[m[32mfrom typing import Any, Dict, Optional, Iterable[m
+ from custom_requester.custom_requester import CustomRequester[m
+[31m-from typing import Any, Dict, Optional[m
+ from constants import API_BASE, MOVIES_ENDPOINT[m
+ [m
+[32m+[m[32mdef _join(base: str, path: str) -> str:[m
+[32m+[m[32m    base = base.rstrip("/")[m
+[32m+[m[32m    if not path:[m
+[32m+[m[32m        return base[m
+[32m+[m[32m    if not path.startswith("/"):[m
+[32m+[m[32m        path = "/" + path[m
+[32m+[m[32m    return base + path[m
+[32m+[m
+ class MoviesAPI(CustomRequester):[m
+[32m+[m[32m    """Клиент /movies поверх CustomRequester"""[m
+     def __init__(self, session, base_url: str = API_BASE, headers: Optional[Dict[str, str]] = None):[m
+         super().__init__(session=session, base_url=base_url, headers=headers)[m
+[32m+[m[32m        self._base = MOVIES_ENDPOINT  # например "/movies"[m
+[32m+[m
+[32m+[m[32m    def create_movie(self, payload: Dict[str, Any], expected_status: int | Iterable[int] = 201):[m
+[32m+[m[32m        return self.post(_join(self._base, ""), json=payload, expected_status=expected_status)[m
+[32m+[m
+[32m+[m[32m    def get_movie(self, movie_id: str | int, expected_status: int | Iterable[int] = 200):[m
+[32m+[m[32m        return self.get(_join(self._base, f"{movie_id}"), expected_status=expected_status)[m
+[32m+[m
+[32m+[m[32m    def patch_movie(self, movie_id: str | int, payload: Dict[str, Any], expected_status: int | Iterable[int] = 200):[m
+[32m+[m[32m        return self.patch(_join(self._base, f"{movie_id}"), json=payload, expected_status=expected_status)[m
+[32m+[m
+[32m+[m[32m    def put_movie(self, movie_id: str | int, payload: Dict[str, Any], expected_status: int | Iterable[int] = 200):[m
+[32m+[m[32m        return self.put(_join(self._base, f"{movie_id}"), json=payload, expected_status=expected_status)[m
+[32m+[m
+[32m+[m[32m    def delete_movie(self, movie_id: str | int, expected_status: int | Iterable[int] = (200, 204, 202)):[m
+[32m+[m[32m        return self.delete(_join(self._base, f"{movie_id}"), expected_status=expected_status)[m
+ [m
+[31m-    # единая точка отправки запросов[m
+[31m-    def _call([m
+[31m-        self,[m
+[31m-        method: str,[m
+[31m-        path: str,[m
+[31m-        *,[m
+[31m-        expected_status: int | tuple[int, ...] = 200,[m
+[31m-        params: Optional[Dict[str, Any]] = None,[m
+[31m-        json: Optional[Dict[str, Any]] = None,[m
+[31m-        data: Any = None,[m
+[31m-        files: Any = None,[m
+[31m-        headers: Optional[Dict[str, str]] = None,[m
+[31m-    ):[m
+[31m-        # все пути строим относительно /movies[m
+[31m-        endpoint = f"{MOVIES_ENDPOINT}{path}"[m
+[31m-        return self.send_request([m
+[31m-            method=method,[m
+[31m-            endpoint=endpoint,[m
+[31m-            expected_status=expected_status,[m
+[31m-            params=params,[m
+[31m-            json=json,[m
+[31m-            data=data,[m
+[31m-            files=files,[m
+[31m-            headers=headers,[m
+[31m-        )[m
+[31m-[m
+[31m-    # POST /movies[m
+[31m-    def create_movie(self, payload: Dict[str, Any], expected_status: int | tuple[int, ...] = 201):[m
+[31m-        return self._call("POST", "", json=payload, expected_status=expected_status)[m
+[31m-[m
+[31m-    # GET /movies/{id}[m
+[31m-    def get_movie(self, movie_id: str | int, expected_status: int | tuple[int, ...] = 200):[m
+[31m-        return self._call("GET", f"/{movie_id}", expected_status=expected_status)[m
+[31m-[m
+[31m-    # PATCH /movies/{id}[m
+[31m-    def patch_movie(self, movie_id: str | int, payload: Dict[str, Any], expected_status: int | tuple[int, ...] = 200):[m
+[31m-        return self._call("PATCH", f"/{movie_id}", json=payload, expected_status=expected_status)[m
+[31m-[m
+[31m-    # PUT /movies/{id}[m
+[31m-    def put_movie(self, movie_id: str | int, payload: Dict[str, Any], expected_status: int | tuple[int, ...] = 200):[m
+[31m-        return self._call("PUT", f"/{movie_id}", json=payload, expected_status=expected_status)[m
+[31m-[m
+[31m-    # DELETE /movies/{id}[m
+[31m-    def delete_movie(self, movie_id: str | int, expected_status: int | tuple[int, ...] = 200):[m
+[31m-        return self._call("DELETE", f"/{movie_id}", expected_status=expected_status)[m
+[31m-[m
+[31m-    # GET /movies[m
+[31m-    def list_movies(self, params: Optional[Dict[str, Any]] = None, expected_status: int | tuple[int, ...] = 200):[m
+[31m-        return self._call("GET", "", params=params or {}, expected_status=expected_status)[m
+[32m+[m[32m    def list_movies(self, params: Optional[Dict[str, Any]] = None, expected_status: int | Iterable[int] = 200):[m
+[32m+[m[32m        return self.get(_join(self._base, ""), params=params or {}, expected_status=expected_status)[m
+\ No newline at end of file[m
+[1mdiff --git a/api/auth_api.py b/api/auth_api.py[m
+[1mindex 852bbc7..c514d56 100644[m
+[1m--- a/api/auth_api.py[m
+[1m+++ 
