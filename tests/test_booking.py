@@ -15,7 +15,7 @@ def test_create_booking(booker):
     }
 
     # JSON на Restful-Booker
-    resp = booker.post(endpoint, json=payload, expected_status=200)
+    resp = booker.send_request("POST", endpoint, json=payload, expected_status=200)
 
     print("Ответ от сервера:", resp.text)
     print("Тело отправленного запроса:", resp.request.body)

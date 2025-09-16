@@ -3,6 +3,7 @@ import logging
 import os
 from collections.abc import Iterable
 
+
 class CustomRequester:
     base_headers = {
         "Content-Type": "application/json",
@@ -12,7 +13,6 @@ class CustomRequester:
     def __init__(self, session, base_url, headers=None):
         self.session = session
         self.base_url = base_url.rstrip("/")
-        # держим базовые заголовки в session, чтобы не плодить
         self.session.headers.update({**self.base_headers, **(headers or {})})
 
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
@@ -24,31 +24,12 @@ class CustomRequester:
 
     @property
     def headers(self) -> dict:
-        """Совместимость: отдаём текущие заголовки из session."""
         return self.session.headers
 
-    # удобные обёртки
-    def get(self, endpoint, *, expected_status=200, params=None, headers=None, **kwargs):
-        return self.send_request("GET", endpoint, expected_status=expected_status, params=params, headers=headers, **kwargs)
-
-    def post(self, endpoint, *, json=None, data=None, expected_status=200, headers=None, files=None, **kwargs):
-        return self.send_request("POST", endpoint, json=json, data=data, expected_status=expected_status, headers=headers, files=files, **kwargs)
-
-    def put(self, endpoint, *, json=None, data=None, expected_status=200, headers=None, files=None, **kwargs):
-        return self.send_request("PUT", endpoint, json=json, data=data, expected_status=expected_status, headers=headers, files=files, **kwargs)
-
-    def patch(self, endpoint, *, json=None, data=None, expected_status=200, headers=None, files=None, **kwargs):
-        return self.send_request("PATCH", endpoint, json=json, data=data, expected_status=expected_status, headers=headers, files=files, **kwargs)
-
-    def delete(self, endpoint, *, expected_status=200, headers=None, **kwargs):
-        return self.send_request("DELETE", endpoint, expected_status=expected_status, headers=headers, **kwargs)
-
-    # единая точка отправки
     def send_request(
         self, method, endpoint, *, json=None, data=None, expected_status=200,
         need_logging=True, params=None, headers=None, files=None
     ):
-        # нормализуем endpoint
         if endpoint.startswith("http"):
             url = endpoint
         else:
@@ -63,9 +44,9 @@ class CustomRequester:
             url=url,
             headers=req_headers,
             params=params,
-            json=json,   # JSON идёт сюда
-            data=data,   # form/bytes сюда
-            files=files
+            json=json,
+            data=data,
+            files=files,
         )
 
         if need_logging:
@@ -82,7 +63,6 @@ class CustomRequester:
         return response
 
     def update_headers(self, **kwargs):
-        # правим только session.headers
         self.session.headers.update(kwargs)
 
     def _log_request_and_response(self, response):
