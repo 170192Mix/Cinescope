@@ -131,6 +131,6 @@ def admin_api(api_manager):
     api_manager.auth_api.authenticate(
         email="api1@gmail.com",
         password="asdqwe123Q",
-        expected_status=200,
+        expected_status=201, # бэк возвращает 201
     )
     return api_manager

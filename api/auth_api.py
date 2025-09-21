@@ -38,10 +38,10 @@ class AuthAPI(CustomRequester):
             expected_status=expected_status,
         )
 
-    def login_user(self, login_data: dict, expected_status=200):
+    def login_user(self, login_data: dict, expected_status=201):
         """Совместимость: принимает dict {'email': ..., 'password': ...}"""
         return self.login(login_data, expected_status=expected_status)
-    # ------------------------------------------------------
+
 
     def authenticate(self, email: str, password: str, expected_status=200) -> str:
         """Логин кладёт Bearer-токен в headers общей session. Возвращает токен"""

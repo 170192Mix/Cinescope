@@ -19,7 +19,7 @@ class TestAuthAPI:
             "email": registered_user["email"],
             "password": registered_user["password"]
         }
-        resp = api_manager.auth_api.login_user(login_data)
+        resp = api_manager.auth_api.login_user(login_data, expected_status=201)
         data = resp.json()
 
         assert resp.status_code in (200, 201)
