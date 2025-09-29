@@ -123,14 +123,34 @@ def requester(session):
 
 
 @pytest.fixture(scope="session")
+def user_api_manager(registered_user):
+    """
+    ApiManager под обычным пользователем.
+    Отдельная Session, чтобы не конфликтовать с admin_api
+    """
+    s = requests.Session()
+    s.trust_env = False
+    s.verify = False
+
+    # используем тот же класс, что и для admin_api
+    user_am = ApiManager(s)
+
+    user_am.auth_api.authenticate(
+        email=registered_user["email"],
+        password=registered_user["password"],
+        expected_status=201,  # у вас админский логин тоже отдаёт 201
+    )
+    return user_am
+
+@pytest.fixture(scope="session")
 def admin_api(api_manager):
     """
-    ApiManager с уже установленным Bearer-токеном администратора.
+    ApiManager с уже установленным Bearer-токеном администратора
     AuthAPI.authenticate сам кладёт токен в session.headers
     """
     api_manager.auth_api.authenticate(
         email="api1@gmail.com",
         password="asdqwe123Q",
-        expected_status=201, # бэк возвращает 201
+        expected_status=(200, 201),  # на одних стендах 201, на других 200 — покрываем оба
     )
     return api_manager
