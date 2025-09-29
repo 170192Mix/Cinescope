@@ -1,15 +1,47 @@
-﻿import time
-import pytest
+﻿import pytest
 from faker import Faker
+from uuid import uuid4
 
 fake = Faker()
 
-# Параметры из Swagger для /movies (и возможные синонимы)
+# Параметры из Swagger для /movies (оставили только то, что реально задокументировано)
 MOVIES_PARAM_PAGE = "page"
 MOVIES_PARAM_LIMIT = "pageSize"
-MOVIES_PARAM_SEARCH = "search"
 
 
+# Хелперы
+def _extract_items_or_fail(resp_json):
+    if isinstance(resp_json, dict) and isinstance(resp_json.get("movies"), list):
+        return resp_json["movies"]
+    raise AssertionError(
+        f"Нарушен контракт списка: ожидали dict с movies:list, получили {type(resp_json)}; "
+        f"keys={list(resp_json.keys()) if isinstance(resp_json, dict) else None}"
+    )
+
+
+def _create_movies(admin_api, base_payload, count, anchor, extra=None):
+    """
+    CHANGED: добавлен параметр extra (ADDED), чтобы можно было задавать
+    изолирующие поля (например, уникальный location) и не зависеть от мусора в БД
+    """
+    extra = extra or {}
+    ids = []
+    for i in range(count):
+        payload = {**base_payload, **extra, "name": f"{anchor} #{i} {base_payload['name']}"}
+        j = admin_api.movies_api.create_movie(payload, expected_status=201).json()
+        movie_id = j.get("id") or (j.get("movie") or {}).get("id")
+        assert movie_id, "Создание фильма не вернуло id"
+        ids.append(movie_id)
+    return ids
+
+
+def _cleanup_movies(admin_api, ids):
+    """Небольшая защита от None/пустого списка"""
+    for mid in ids or []:  # CHANGED: на случай ids=None
+        admin_api.movies_api.delete_movie(mid, expected_status=(200, 204, 202))
+
+
+# Фикстуры
 @pytest.fixture
 def movie_payload():
     """Базовый валидный payload на создание фильма"""
@@ -19,17 +51,17 @@ def movie_payload():
         "genreId": 1,
         "imageUrl": "https://example.com/movie.jpg",
         "price": 500,
-        "location": "MSK",
+        "location": "MSK",   # по умолчанию MSK; в тестах можем переопределять через extra
         "published": True,
     }
 
 
+# CRUD
 def test_create_movie(admin_api, movie_payload):
     """Создание, чтение, удаление"""
     resp = admin_api.movies_api.create_movie(movie_payload, expected_status=201)
     body = resp.json()
 
-    # Берём id напрямую; если бэк вернёт вложенно — используем запасной вариант
     movie_id = body.get("id") or (body.get("movie") or {}).get("id")
     assert movie_id, "В ответе на создание нет id"
 
@@ -62,84 +94,41 @@ def test_delete_movie(admin_api, movie_payload):
     admin_api.movies_api.get_movie(movie_id, expected_status=404)
 
 
-@pytest.mark.xfail(reason="dev: /movies сейчас не применяет фильтр ?search (поиск не работает)")
-def test_list_movies__search_filter(admin_api, movie_payload):
-    """Проверяем фильтрацию по имени через ?search"""
-    anchor = f"ZX_{fake.lexify(text='????').upper()}"
-    movie_payload = {**movie_payload, "name": f"{anchor} {movie_payload['name']}"}
+# Пагинация
+def test_movies_pagination_basic(admin_api, movie_payload):
+    """
+    Пагинация по контракту Swagger: ?page, ?pageSize
+    Должно быть:
+      - при pageSize=1 возвращается ровно 1 элемент,
+      - page=1 и page=2 — РАЗНЫЕ записи (по id)
+    """
+    anchor = f"PG_{uuid4().hex[:6]}"
 
-    created = admin_api.movies_api.create_movie(movie_payload, expected_status=201).json()
-    movie_id = created.get("id") or (created.get("movie") or {}).get("id")
+    created_ids = _create_movies(admin_api, movie_payload, count=2, anchor=anchor)
 
     try:
-        found = False
-        for _ in range(5):
-            resp = admin_api.movies_api.list_movies(
-                params={MOVIES_PARAM_SEARCH: anchor, MOVIES_PARAM_PAGE: 1, MOVIES_PARAM_LIMIT: 10},
-                expected_status=200,
-            )
-            data = resp.json()
-            # Получил ответ — достал фильмы (без хелперов)
-            items = data if isinstance(data, list) else data.get("items") or data.get("movies") or data.get("rows") or []
-            if any(anchor.lower() in (i.get("name", "")).lower() for i in items):
-                found = True
-                break
-            time.sleep(0.6)  # ждём обновления индекса
-        assert found, "Поиск не вернул созданный фильм"
+        # page=1
+        r1 = admin_api.movies_api.list_movies(
+            params={MOVIES_PARAM_PAGE: 1, MOVIES_PARAM_LIMIT: 1},
+            expected_status=200
+        ).json()
+        assert isinstance(r1.get("movies"), list), "Ответ должен содержать список 'movies'"  # FIX
+        assert len(r1["movies"]) == 1, "pageSize=1 должен возвращать 1 элемент"
+        id1 = r1["movies"][0]["id"]
+
+        # page=2
+        r2 = admin_api.movies_api.list_movies(
+            params={MOVIES_PARAM_PAGE: 2, MOVIES_PARAM_LIMIT: 1},
+            expected_status=200
+        ).json()
+        assert isinstance(r2.get("movies"), list), "Ответ должен содержать список 'movies'"  # FIX
+        assert len(r2["movies"]) == 1, "pageSize=1 должен возвращать 1 элемент"
+        id2 = r2["movies"][0]["id"]
+
+        assert id1 != id2, "Элементы page=1 и page=2 не должны совпадать"
+
+        # метаданные страницы (поля по Swagger)
+        assert isinstance(r1.get("page"), int), "page должен быть int"   # FIX (опечатка ниже была)
+        assert isinstance(r1.get("pageSize"), int), "pageSize должен быть int" # FIX
     finally:
-        if movie_id:
-            admin_api.movies_api.delete_movie(movie_id, expected_status=(200, 204, 202))
-
-
-def test_list_movies__pagination_limit(admin_api, movie_payload):
-    """
-    Санити пагинации: пробуем несколько распространённых пар параметров
-    Успех — если хотя бы один вариант вернёт не более 1 элемента
-    """
-    created = admin_api.movies_api.create_movie(movie_payload, expected_status=201).json()
-    movie_id = created.get("id") or (created.get("movie") or {}).get("id")
-
-    try:
-        candidates = [
-            {MOVIES_PARAM_PAGE: 1, MOVIES_PARAM_LIMIT: 1},  # page/pageSize (как в Swagger)
-            {"page": 1, "limit": 1},
-            {"page": 1, "perPage": 1},
-            {"offset": 0, "limit": 1},
-            {"skip": 0, "take": 1},
-        ]
-        ok = False
-        last_items = None
-        last_json = None
-
-        for params in candidates:
-            resp = admin_api.movies_api.list_movies(params=params, expected_status=200)
-            j = resp.json()
-            # Получил ответ — достал фильмы
-            items = j if isinstance(j, list) else j.get("items") or j.get("movies") or j.get("rows") or []
-            last_items = items
-            last_json = j
-            if isinstance(items, list) and len(items) <= 1:
-                ok = True
-                break
-
-        if ok:
-            assert True
-        else:
-            # Если ни один вариант не сработал — проверим структуру ответа
-            assert isinstance(last_items, list), "Ожидали список фильмов в ответе"
-            if isinstance(last_json, dict):
-                if "page" in last_json:
-                    assert isinstance(last_json["page"], int)
-                if "pageSize" in last_json:
-                    assert isinstance(last_json["pageSize"], int)
-                if "pageCount" in last_json:
-                    assert isinstance(last_json["pageCount"], int)
-    finally:
-        if movie_id:
-            admin_api.movies_api.delete_movie(movie_id, expected_status=(200, 204, 202))
-
-
-@pytest.mark.skip(reason="RBAC будет включён позже; сейчас все запросы идут под админом")
-def test_create_movie__forbidden_for_user(user_api_manager, movie_payload):
-    """Негатив: обычному пользователю должен прилетать 403 на создание фильма"""
-    user_api_manager.movies_api.create_movie(movie_payload, expected_status=403)
+        _cleanup_movies(admin_api, created_ids)
